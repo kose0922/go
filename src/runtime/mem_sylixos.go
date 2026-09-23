@@ -51,6 +51,30 @@ func sysAllocOS(n uintptr, vmaName string) unsafe.Pointer {
 // Note the polarity differs from Linux: upstream hard-decommits only when
 // harddecommit > 0, whereas here it is ON by default (that is the point of the
 // fix) and a negative value turns it off.
+//
+// Known cost, accepted: address-space fragmentation.
+//
+// mmap(MAP_FIXED) is a VMA-level operation -- each call splits the mapping, so
+// repeated scavenging grows the number of VMM regions without bound. Measured
+// on the same etcd write load (`mmaps` row count, same board):
+//
+//	sysUnusedOS as a no-op :   54 ->   97  regions
+//	sysUnusedOS implemented: 2718 -> 6282  regions   (83x)
+//
+// etcd kept working normally at 6282 regions and the write rate did not
+// degrade, but the growth is linear and shows no sign of converging, so the
+// practical ceiling is not known.
+//
+// This is a deliberate trade-off, not an oversight. Every alternative was
+// measured on hardware and none of them reclaims a single page:
+//
+//	mprotect(PROT_NONE)                -> returns 0, releases 0 bytes
+//	posix_madvise(POSIX_MADV_DONTNEED) -> returns 0, releases 0 bytes
+//	mmap(RW, MAP_FIXED)                -> releases nothing (re-protects only)
+//
+// Only PROT_NONE + MAP_FIXED drops physical pages, so the fragmentation is the
+// price of being able to reclaim at all. On Linux the cheap primitive (madvise)
+// exists and this path is a debug-only option; SylixOS has no equivalent.
 func sysUnusedOS(v unsafe.Pointer, n uintptr) {
 	if debug.harddecommit < 0 || n == 0 {
 		return
