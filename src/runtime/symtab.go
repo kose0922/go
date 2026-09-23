@@ -614,9 +614,12 @@ const debugPcln = false
 //go:linkname moduledataverify1
 func moduledataverify1(datap *moduledata) {
 	// --- SylixOS: repair ftab sentinel corrupted by external linker ---
-	nftab := len(datap.ftab) - 1
-	if nftab > 0 && datap.ftab[nftab].entryoff == 0 && datap.maxpc > datap.text {
-		datap.ftab[nftab].entryoff = uint32(datap.maxpc - datap.text)
+	// Use a distinct name: the upstream code below also declares nftab,
+	// and reusing it here made the package fail to compile
+	// ("no new variables on left side of :=").
+	nftabFix := len(datap.ftab) - 1
+	if nftabFix > 0 && datap.ftab[nftabFix].entryoff == 0 && datap.maxpc > datap.text {
+		datap.ftab[nftabFix].entryoff = uint32(datap.maxpc - datap.text)
 	}
 
 	// --- SylixOS: repair string tables + typelinks corrupted by external linker ---
